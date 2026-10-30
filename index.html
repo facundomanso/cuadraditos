@@ -117,6 +117,8 @@ nav.tabs svg { width: 22px; height: 22px; }
 .act { display: flex; align-items: center; gap: 8px; text-align: left; padding: 10px 12px; min-height: 52px; border-radius: 12px; font-weight: 700; line-height: 1.2; }
 .act .em { font-size: 20px; }
 .act[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.chip .em { margin-right: 4px; }
+.chip.act-on { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
 .detail { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
 .detail b { font-size: 14px; }
 .seg { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -225,6 +227,7 @@ const addDays = (k, n) => { const d = dateOf(k); d.setDate(d.getDate() + n); ret
 // Antes de las 5 de la mañana todavía cuenta como el día anterior (para cargar la noche tarde).
 const today = () => { const d = new Date(); if (d.getHours() < 5) d.setDate(d.getDate() - 1); return keyOf(d); };
 const mondayOf = k => { const d = dateOf(k); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return keyOf(d); };
+const slotNow = () => { const hr = new Date().getHours(); return hr >= 5 && hr < 13 ? 'm' : hr >= 5 && hr < 20 ? 't' : 'n'; };
 const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
@@ -244,8 +247,17 @@ let sheet = null; // { kind: 'morning' | 'night', date, draft, search, open }
 
 function load() {
   const d = lsGet(KEY);
-  if (d && d.days && Array.isArray(d.acts)) return d;
-  return { v: 1, acts: DEFAULT_ACTS.map(a => ({ ...a })), days: {}, lastBackup: null };
+  if (d && d.days && Array.isArray(d.acts)) return migrate(d);
+  return { v: 2, acts: DEFAULT_ACTS.map(a => ({ ...a })), days: {}, lastBackup: null };
+}
+// v1 guardaba las actividades dentro de la noche; desde v2 son del día y se cargan en cualquier momento.
+function migrate(d) {
+  for (const day of Object.values(d.days)) {
+    if (day.night?.acts) { day.acts = { ...day.night.acts, ...day.acts }; delete day.night.acts; }
+    if (day.acts && !Object.keys(day.acts).length) delete day.acts;
+  }
+  d.v = 2;
+  return d;
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(data)); return true; }
@@ -318,12 +330,17 @@ function renderHoy() {
   </div>
 
   <div class="card">
+    <div class="card-head"><h2>✅ Actividades</h2></div>
+    <p class="small muted" style="margin:-4px 0 0">Marcalas cuando quieras durante el día.</p>
+    <div id="day-acts">${actsHtml(day.acts || {}, true)}</div>
+  </div>
+
+  <div class="card">
     <div class="card-head"><h2>🌙 Noche</h2>${n ? '<button class="ghost" data-open="night">Editar</button>' : ''}</div>
     ${n ? `
-      ${metric('score', n.score)}
-      ${Object.keys(n.acts || {}).length ? `<div class="pills">${Object.entries(n.acts).map(([id, v]) => `<span class="pill">${h(actText(id, v))}</span>`).join('')}</div>` : '<p class="empty" style="margin:0">Sin actividades marcadas.</p>'}
+      ${n.score ? metric('score', n.score) : ''}
       ${n.note ? `<div class="note">${h(n.note)}</div>` : ''}
-    ` : `<p class="empty" style="margin:0">¿Qué hiciste y cómo te sentiste en el día?</p>
+    ` : `<p class="empty" style="margin:0">¿Cómo te sentiste en el día, en general?</p>
          <button class="${!morningFirst ? 'primary' : ''}" data-open="night">Cargar la noche</button>`}
   </div>`;
 }
@@ -341,7 +358,7 @@ function renderCal() {
       const k = addDays(mon, i), day = data.days[k], v = dayColor(day), d = dateOf(k);
       const bits = [];
       if (day?.morning?.emotions?.length) bits.push(day.morning.emotions.slice(0, 3).join(', '));
-      if (day?.night?.acts) bits.push(Object.keys(day.night.acts).map(id => actById(id)?.emoji || '•').join(' '));
+      if (day?.acts) bits.push(Object.keys(day.acts).map(id => actById(id)?.emoji || '•').join(' '));
       body += `<button class="wrow" data-day="${k}" ${k > today() ? 'disabled' : ''}>
         <span class="sq" style="${squareStyle(v)}">${d.getDate()}</span>
         <span class="info"><b>${cap(DOW[d.getDay()])}${v ? ` · ${SCALES.score.w[v - 1]}` : ''}</b><span>${h(bits.join(' · ')) || (k > today() ? '' : 'Sin datos')}</span></span>
@@ -441,7 +458,7 @@ function openSheet(kind, date) {
   const day = data.days[date] || {};
   const draft = kind === 'morning'
     ? { emotions: [...(day.morning?.emotions || [])], mood: day.morning?.mood ?? null, energy: day.morning?.energy ?? null, sleep: day.morning?.sleep ?? null }
-    : { acts: structuredClone(day.night?.acts || {}), score: day.night?.score ?? null, note: day.night?.note || '' };
+    : { acts: structuredClone(day.acts || {}), score: day.night?.score ?? null, note: day.night?.note || '' };
   sheet = { kind, date, draft, search: '', open: new Set(), existed: !!day[kind] };
   renderSheet();
   $('#sheet').hidden = $('#foot').hidden = false;
@@ -498,7 +515,7 @@ function renderSheet() {
   } else {
     body = `<h2 style="font-size:24px">🌙 ¿Cómo fue tu día?</h2>
       <div class="card">${scaleHtml('score')}</div>
-      <section><h3>¿Qué hiciste hoy?</h3><div id="acts-box"></div></section>
+      <section><h3>¿Qué hiciste hoy?</h3><p class="small muted" style="margin:0">Revisá si te faltó marcar algo.</p><div id="acts-box"></div></section>
       <section><h3>Nota (opcional)</h3><textarea id="note" placeholder="Algo que quieras recordar de hoy…" maxlength="2000">${h(draft.note)}</textarea></section>`;
   }
   $('#sheet').innerHTML = `<div class="wrap">${head}${body}${sheet.existed ? '<button class="ghost danger" data-act="delete-entry">Borrar este registro</button>' : ''}</div>`;
@@ -533,9 +550,14 @@ function renderEmotions() {
 }
 
 function renderActs() {
-  const d = sheet.draft.acts;
+  $('#acts-box').innerHTML = actsHtml(sheet.draft.acts) + `<p class="small muted" style="margin:10px 0 0">Podés cambiar esta lista en Ajustes.</p>`;
+}
+// compact: chips chicas para la pantalla Hoy; si no, botones grandes para la hoja de la noche.
+function actsHtml(d, compact) {
   const list = data.acts.filter(a => !a.hidden || d[a.id]);
-  let s = `<div class="acts">${list.map(a => `<button class="act" data-actid="${a.id}" aria-pressed="${!!d[a.id]}"><span class="em">${h(a.emoji)}</span>${h(a.name)}</button>`).join('')}</div>`;
+  let s = compact
+    ? `<div class="chips">${list.map(a => `<button class="chip ${d[a.id] ? 'act-on' : ''}" data-actid="${a.id}" aria-pressed="${!!d[a.id]}"><span class="em">${h(a.emoji)}</span>${h(a.name)}</button>`).join('')}</div>`
+    : `<div class="acts">${list.map(a => `<button class="act" data-actid="${a.id}" aria-pressed="${!!d[a.id]}"><span class="em">${h(a.emoji)}</span>${h(a.name)}</button>`).join('')}</div>`;
   for (const a of list.filter(a => a.detail && d[a.id])) {
     const v = d[a.id];
     s += `<div class="detail" style="margin-top:8px"><b>${h(a.emoji)} ${h(a.name)}</b>
@@ -543,14 +565,19 @@ function renderActs() {
       <div class="seg">${SLOTS.map(([k, l]) => `<button data-slot="${a.id}:${k}" aria-pressed="${!!v.slots?.includes(k)}">${l}</button>`).join('')}</div>
     </div>`;
   }
-  $('#acts-box').innerHTML = s + `<p class="small muted" style="margin:10px 0 0">Podés cambiar esta lista en Ajustes.</p>`;
+  return s;
 }
 
 function saveSheet() {
   const { kind, date, draft } = sheet;
   const day = data.days[date] || (data.days[date] = {});
   if (kind === 'morning') day.morning = { ...draft, at: Date.now() };
-  else day.night = { acts: draft.acts, score: draft.score, note: draft.note.trim(), at: Date.now() };
+  else {
+    if (Object.keys(draft.acts).length) day.acts = draft.acts; else delete day.acts;
+    if (draft.score || draft.note.trim()) day.night = { score: draft.score, note: draft.note.trim(), at: Date.now() };
+    else delete day.night;
+    if (!day.morning && !day.night && !day.acts) delete data.days[date];
+  }
   if (save()) { toast('Guardado'); closeSheet(); }
 }
 
@@ -608,17 +635,23 @@ document.addEventListener('click', e => {
     i >= 0 ? sel.splice(i, 1) : sel.push(ds.emo);
     renderEmotions(); updateSave(); return;
   }
-  if (ds.actid) {
-    const d = sheet.draft.acts, a = actById(ds.actid);
-    if (d[ds.actid]) delete d[ds.actid]; else d[ds.actid] = a?.detail ? { lvl: 1, slots: [] } : {};
-    renderActs(); updateSave(); return;
-  }
-  if (ds.lvl) { const [id, l] = ds.lvl.split(':'); sheet.draft.acts[id].lvl = +l; renderActs(); return; }
-  if (ds.slot) {
-    const [id, s] = ds.slot.split(':'), v = sheet.draft.acts[id], sl = v.slots || (v.slots = []);
-    sl.includes(s) ? sl.splice(sl.indexOf(s), 1) : sl.push(s);
-    v.slots = SLOTS.map(x => x[0]).filter(x => sl.includes(x));
-    renderActs(); return;
+  if (ds.actid || ds.lvl || ds.slot) {
+    const date = sheet ? sheet.date : state.date;
+    const d = sheet ? sheet.draft.acts : (data.days[date]?.acts || {});
+    if (ds.actid) {
+      const a = actById(ds.actid);
+      if (d[ds.actid]) delete d[ds.actid]; else d[ds.actid] = a?.detail ? { lvl: 1, slots: date === today() ? [slotNow()] : [] } : {};
+    } else if (ds.lvl) { const [id, l] = ds.lvl.split(':'); d[id].lvl = +l; }
+    else {
+      const [id, s] = ds.slot.split(':'), v = d[id], sl = v.slots || [];
+      v.slots = SLOTS.map(x => x[0]).filter(x => x === s ? !sl.includes(x) : sl.includes(x));
+    }
+    if (sheet) { renderActs(); updateSave(); return; }
+    // En Hoy se guarda al instante.
+    const day = data.days[date] || (data.days[date] = {});
+    if (Object.keys(d).length) day.acts = d; else delete day.acts;
+    if (!day.morning && !day.night && !day.acts) delete data.days[date];
+    save(); $('#day-acts').innerHTML = actsHtml(day.acts || {}, true); return;
   }
   if (ds.up || ds.down) { moveAct(ds.up || ds.down, ds.up ? -1 : 1); return; }
   if (ds.edit) { state.editAct = ds.edit; render(); $('#f-name')?.focus(); return; }
@@ -630,7 +663,7 @@ document.addEventListener('click', e => {
     case 'delete-entry':
       if (confirm(`¿Borrar el registro de ${sheet.kind === 'morning' ? 'la mañana' : 'la noche'}?`)) {
         const day = data.days[sheet.date]; delete day[sheet.kind];
-        if (!day.morning && !day.night) delete data.days[sheet.date];
+        if (!day.morning && !day.night && !day.acts) delete data.days[sheet.date];
         save(); closeSheet(); toast('Borrado');
       }
       break;
@@ -682,7 +715,7 @@ $('#file').addEventListener('change', async e => {
     if (!d || typeof d.days !== 'object' || !Array.isArray(d.acts)) throw 0;
     const n = Object.keys(d.days).length;
     if (!confirm(`Esta copia tiene ${n} días. Va a reemplazar todo lo que hay ahora en la app. ¿Seguir?`)) return;
-    data = d; save(); state.date = today(); render(); toast('Copia restaurada');
+    data = migrate(d); save(); state.date = today(); render(); toast('Copia restaurada');
   } catch { alert('Ese archivo no parece una copia de Cuadraditos.'); }
 });
 
