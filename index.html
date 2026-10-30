@@ -242,7 +242,7 @@ function dayLabel(k) {
 /* ---------- datos ---------- */
 let data = load();
 let ui = Object.assign({ backupHideUntil: 0 }, lsGet(UIKEY));
-let state = { tab: 'hoy', date: today(), calMode: 'mes', calAnchor: today(), editAct: null };
+let state = { tab: 'hoy', date: today(), calMode: 'mes', calAnchor: today(), editAct: null, actsOpen: false };
 let sheet = null; // { kind: 'morning' | 'night', date, draft, search, open }
 
 function load() {
@@ -329,11 +329,7 @@ function renderHoy() {
          <button class="${morningFirst ? 'primary' : ''}" data-open="morning">Cargar la mañana</button>`}
   </div>
 
-  <div class="card">
-    <div class="card-head"><h2>✅ Actividades</h2></div>
-    <p class="small muted" style="margin:-4px 0 0">Marcalas cuando quieras durante el día.</p>
-    <div id="day-acts">${actsHtml(day.acts || {}, true)}</div>
-  </div>
+  <div id="day-acts">${dayActsHtml()}</div>
 
   <div class="card">
     <div class="card-head"><h2>🌙 Noche</h2>${n ? '<button class="ghost" data-open="night">Editar</button>' : ''}</div>
@@ -552,9 +548,16 @@ function renderEmotions() {
 function renderActs() {
   $('#acts-box').innerHTML = actsHtml(sheet.draft.acts) + `<p class="small muted" style="margin:10px 0 0">Podés cambiar esta lista en Ajustes.</p>`;
 }
+// Hoy: solo las actividades marcadas y un botón que despliega la lista completa.
+function dayActsHtml() {
+  const d = data.days[state.date]?.acts || {}, any = Object.keys(d).length;
+  if (state.actsOpen) return `<div class="card">${actsHtml(d, true)}<button class="primary" data-act="acts-close">Listo</button></div>`;
+  const add = `<button class="wide" data-act="acts-open">＋ Agregar actividad</button>`;
+  return any ? `<div class="card">${actsHtml(d, true, true)}${add}</div>` : add;
+}
 // compact: chips chicas para la pantalla Hoy; si no, botones grandes para la hoja de la noche.
-function actsHtml(d, compact) {
-  const list = data.acts.filter(a => !a.hidden || d[a.id]);
+function actsHtml(d, compact, onlyMarked) {
+  const list = data.acts.filter(a => onlyMarked ? d[a.id] : !a.hidden || d[a.id]);
   let s = compact
     ? `<div class="chips">${list.map(a => `<button class="chip ${d[a.id] ? 'act-on' : ''}" data-actid="${a.id}" aria-pressed="${!!d[a.id]}"><span class="em">${h(a.emoji)}</span>${h(a.name)}</button>`).join('')}</div>`
     : `<div class="acts">${list.map(a => `<button class="act" data-actid="${a.id}" aria-pressed="${!!d[a.id]}"><span class="em">${h(a.emoji)}</span>${h(a.name)}</button>`).join('')}</div>`;
@@ -623,10 +626,10 @@ $('#sheet').addEventListener('toggle', e => {
 document.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   const ds = b.dataset;
-  if (ds.tab) { state.tab = ds.tab; state.editAct = null; render(); scrollTo(0, 0); return; }
-  if (ds.go) { state.date = ds.go > today() ? today() : ds.go; render(); return; }
+  if (ds.tab) { state.tab = ds.tab; state.editAct = null; state.actsOpen = false; render(); scrollTo(0, 0); return; }
+  if (ds.go) { state.actsOpen = false; state.date = ds.go > today() ? today() : ds.go; render(); return; }
   if (ds.open) { openSheet(ds.open, state.date); return; }
-  if (ds.day) { state.date = ds.day; state.tab = 'hoy'; render(); scrollTo(0, 0); return; }
+  if (ds.day) { state.actsOpen = false; state.date = ds.day; state.tab = 'hoy'; render(); scrollTo(0, 0); return; }
   if (ds.mode) { state.calMode = ds.mode; render(); return; }
   if (ds.month) { const a = dateOf(state.calAnchor); state.calAnchor = keyOf(new Date(a.getFullYear(), +ds.month, 1)); state.calMode = 'mes'; render(); return; }
   if (ds.shift) { shiftCal(+ds.shift); return; }
@@ -651,7 +654,7 @@ document.addEventListener('click', e => {
     const day = data.days[date] || (data.days[date] = {});
     if (Object.keys(d).length) day.acts = d; else delete day.acts;
     if (!day.morning && !day.night && !day.acts) delete data.days[date];
-    save(); $('#day-acts').innerHTML = actsHtml(day.acts || {}, true); return;
+    save(); $('#day-acts').innerHTML = dayActsHtml(); return;
   }
   if (ds.up || ds.down) { moveAct(ds.up || ds.down, ds.up ? -1 : 1); return; }
   if (ds.edit) { state.editAct = ds.edit; render(); $('#f-name')?.focus(); return; }
@@ -667,6 +670,8 @@ document.addEventListener('click', e => {
         save(); closeSheet(); toast('Borrado');
       }
       break;
+    case 'acts-open': state.actsOpen = true; $('#day-acts').innerHTML = dayActsHtml(); break;
+    case 'acts-close': state.actsOpen = false; $('#day-acts').innerHTML = dayActsHtml(); break;
     case 'new-act': state.editAct = 'new'; render(); $('#f-name')?.focus(); break;
     case 'cancel-act': state.editAct = null; render(); break;
     case 'save-act': saveAct(); break;
