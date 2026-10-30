@@ -166,6 +166,7 @@ details.fam .chips { padding-bottom: 14px; }
 .arow .nm { flex: 1; min-width: 0; font-weight: 700; }
 .arow .nm small { display: block; color: var(--muted); font-weight: 600; font-size: 12px; }
 .arow button { min-height: 36px; min-width: 36px; padding: 6px; font-size: 15px; }
+.toggle-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; min-height: 54px; padding: 12px 16px; border-radius: 14px; font-size: 15px; text-align: left; }
 .aform { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .aform input.emo { text-align: center; font-size: 20px; padding: 6px; }
 .aform .full { grid-column: 1 / -1; }
@@ -242,7 +243,7 @@ function dayLabel(k) {
 /* ---------- datos ---------- */
 let data = load();
 let ui = Object.assign({ backupHideUntil: 0 }, lsGet(UIKEY));
-let state = { tab: 'hoy', date: today(), calMode: 'mes', calAnchor: today(), editAct: null, actsOpen: false };
+let state = { tab: 'hoy', date: today(), calMode: 'mes', calAnchor: today(), editAct: null, actsOpen: false, actsEditOpen: false };
 let sheet = null; // { kind: 'morning' | 'night', date, draft, search, open }
 
 function load() {
@@ -433,12 +434,16 @@ function renderAjustes() {
   return `
   <header class="top"><h2 style="font-size:24px;font-weight:900">Ajustes</h2></header>
   <section>
-    <h3>Actividades de la noche</h3>
+    <h3>Actividades</h3>
+    <button class="toggle-row" data-act="toggle-acts-edit" aria-expanded="${state.actsEditOpen}">
+      <span>✅ Editar actividades diarias</span><span class="muted">${active.length} ${state.actsEditOpen ? '▴' : '▾'}</span>
+    </button>
+    ${state.actsEditOpen ? `
     <div class="alist">${rows}${state.editAct === 'new' ? form(null) : ''}</div>
     ${state.editAct !== 'new' ? '<button data-act="new-act">＋ Agregar actividad</button>' : ''}
+    ${hidden.length ? `<h3 style="margin-top:8px">Quitadas</h3><p class="small muted" style="margin:0">Siguen en tu historial. Podés volver a mostrarlas.</p>
+    <div class="alist">${hidden.map(a => `<div class="arow"><span class="em">${h(a.emoji)}</span><span class="nm">${h(a.name)}</span><button data-show="${a.id}">Volver a mostrar</button></div>`).join('')}</div>` : ''}` : ''}
   </section>
-  ${hidden.length ? `<section><h3>Quitadas</h3><p class="small muted" style="margin:0">Siguen en tu historial. Podés volver a mostrarlas.</p>
-    <div class="alist">${hidden.map(a => `<div class="arow"><span class="em">${h(a.emoji)}</span><span class="nm">${h(a.name)}</span><button data-show="${a.id}">Volver a mostrar</button></div>`).join('')}</div></section>` : ''}
   <section>
     <h3>Tus datos</h3>
     <div class="card">
@@ -551,9 +556,9 @@ function renderActs() {
 // Hoy: solo las actividades marcadas y un botón que despliega la lista completa.
 function dayActsHtml() {
   const d = data.days[state.date]?.acts || {}, any = Object.keys(d).length;
-  if (state.actsOpen) return `<div class="card">${actsHtml(d, true)}<button class="primary" data-act="acts-close">Listo</button></div>`;
-  const add = `<button class="wide" data-act="acts-open">＋ Agregar actividad</button>`;
-  return any ? `<div class="card">${actsHtml(d, true, true)}${add}</div>` : add;
+  const head = `<div class="card-head"><h2>✅ Actividades diarias</h2></div>`;
+  if (state.actsOpen) return `<div class="card">${head}${actsHtml(d, true)}<button class="primary" data-act="acts-close">Listo</button></div>`;
+  return `<div class="card">${head}${any ? actsHtml(d, true, true) : '<p class="empty" style="margin:0">¿Qué hiciste hoy? Marcalo cuando quieras.</p>'}<button data-act="acts-open">＋ Agregar</button></div>`;
 }
 // compact: chips chicas para la pantalla Hoy; si no, botones grandes para la hoja de la noche.
 function actsHtml(d, compact, onlyMarked) {
@@ -672,6 +677,7 @@ document.addEventListener('click', e => {
       break;
     case 'acts-open': state.actsOpen = true; $('#day-acts').innerHTML = dayActsHtml(); break;
     case 'acts-close': state.actsOpen = false; $('#day-acts').innerHTML = dayActsHtml(); break;
+    case 'toggle-acts-edit': state.actsEditOpen = !state.actsEditOpen; state.editAct = null; render(); break;
     case 'new-act': state.editAct = 'new'; render(); $('#f-name')?.focus(); break;
     case 'cancel-act': state.editAct = null; render(); break;
     case 'save-act': saveAct(); break;
