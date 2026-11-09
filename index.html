@@ -562,7 +562,9 @@ function dayActsHtml() {
 }
 // compact: chips chicas para la pantalla Hoy; si no, botones grandes para la hoja de la noche.
 function actsHtml(d, compact, onlyMarked) {
-  const list = data.acts.filter(a => onlyMarked ? d[a.id] : !a.hidden || d[a.id]);
+  // Lista cerrada en Hoy: solo un resumen de cada actividad marcada; tocarla abre la lista para editarla.
+  if (onlyMarked) return `<div class="chips">${data.acts.filter(a => d[a.id]).map(a => `<button class="chip act-on" data-act="acts-open">${h(actText(a.id, d[a.id]))}</button>`).join('')}</div>`;
+  const list = data.acts.filter(a => !a.hidden || d[a.id]);
   let s = compact
     ? `<div class="chips">${list.map(a => `<button class="chip ${d[a.id] ? 'act-on' : ''}" data-actid="${a.id}" aria-pressed="${!!d[a.id]}"><span class="em">${h(a.emoji)}</span>${h(a.name)}</button>`).join('')}</div>`
     : `<div class="acts">${list.map(a => `<button class="act" data-actid="${a.id}" aria-pressed="${!!d[a.id]}"><span class="em">${h(a.emoji)}</span>${h(a.name)}</button>`).join('')}</div>`;
