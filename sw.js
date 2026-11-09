@@ -1,5 +1,5 @@
 // Subí VERSION cada vez que publiques cambios para que los teléfonos descarguen la versión nueva.
-const VERSION = 'cuadraditos-v6';
+const VERSION = 'cuadraditos-v7';
 const SHELL = ['./', './index.html', './fonts/fonts.css', './fonts/Nunito-latin.woff2', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
