@@ -78,6 +78,8 @@ nav.tabs svg { width: 22px; height: 22px; }
 .strip button { padding: 0; min-height: 0; border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .strip .sq { width: 100%; aspect-ratio: 1; border-radius: 9px; }
 .strip button[aria-current="date"] { color: var(--ink); }
+.strip button.future { opacity: .55; }
+.strip button.future .sq { background: transparent !important; border: 1px dashed var(--line); }
 .strip button[aria-current="date"] .sq { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .card-head h2 { display: flex; align-items: center; gap: 8px; }
@@ -243,7 +245,7 @@ function dayLabel(k) {
 /* ---------- datos ---------- */
 let data = load();
 let ui = Object.assign({ backupHideUntil: 0 }, lsGet(UIKEY));
-let state = { tab: 'hoy', date: today(), calMode: 'mes', calAnchor: today(), editAct: null, actsOpen: false, actsEditOpen: false };
+let state = { tab: 'hoy', date: today(), calMode: 'ano', calAnchor: today(), editAct: null, actsOpen: false, actsEditOpen: false };
 let sheet = null; // { kind: 'morning' | 'night', date, draft, search, open }
 
 function load() {
@@ -299,11 +301,11 @@ function legend() {
 /* ---------- pestaña Hoy ---------- */
 function renderHoy() {
   const k = state.date, t = today(), day = data.days[k] || {}, { rel, full } = dayLabel(k);
-  const end = k > addDays(t, -7) ? t : addDays(k, 3);
+  const mon = mondayOf(k);
   let strip = '';
-  for (let i = 6; i >= 0; i--) {
-    const d = addDays(end, -i);
-    strip += `<button data-go="${d}" ${d === k ? 'aria-current="date"' : ''} aria-label="${h(dayLabel(d).full)}"><span class="sq" style="${squareStyle(dayColor(data.days[d])) || 'background:var(--surface-2)'}"></span>${DOW[dateOf(d).getDay()].slice(0, 2)}</button>`;
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(mon, i);
+    strip += `<button data-go="${d}" ${d === k ? 'aria-current="date"' : ''} ${d > t ? 'class="future" disabled' : ''} aria-label="${h(dayLabel(d).full)}"><span class="sq" style="${squareStyle(dayColor(data.days[d])) || 'background:var(--surface-2)'}"></span>${DOW[dateOf(d).getDay()].slice(0, 2)}</button>`;
   }
   const m = day.morning, n = day.night;
   const morningFirst = !m;
